@@ -1,0 +1,555 @@
+{
+  "nbformat": 4,
+  "nbformat_minor": 0,
+  "metadata": {
+    "colab": {
+      "name": "DeepGANs",
+      "provenance": [],
+      "collapsed_sections": [],
+      "mount_file_id": "15twmdm5BTjw83AHUee_SAnAz6dTdMDss",
+      "authorship_tag": "ABX9TyNerYoAIjHIx9Y4FMCWFvoa",
+      "include_colab_link": true
+    },
+    "kernelspec": {
+      "name": "python3",
+      "display_name": "Python 3"
+    }
+  },
+  "cells": [
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "view-in-github",
+        "colab_type": "text"
+      },
+      "source": [
+        "<a href=\"https://colab.research.google.com/github/AchintyaX/ARES_tasks/blob/master/Generative_Adversarial_Networks.ipynb%20\" target=\"_parent\"><img src=\"https://colab.research.google.com/assets/colab-badge.svg\" alt=\"Open In Colab\"/></a>"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "JUBOUN6rUFE-",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "# importing tensorflow \n",
+        "\n",
+        "import tensorflow as tf "
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "8ZpeuGaKUL72",
+        "colab_type": "code",
+        "outputId": "c806f36e-47f1-4494-8a15-696067cd43d4",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 34
+        }
+      },
+      "source": [
+        "# To generate GIFs \n",
+        "! pip install -q imageio\n",
+        "\n",
+        "# checking the version of tensorflow \n",
+        "print(tf.__version__)"
+      ],
+      "execution_count": 2,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "text": [
+            "2.2.0-rc3\n"
+          ],
+          "name": "stdout"
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "YZ8WHcChUN9l",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "import glob \n",
+        "import imageio\n",
+        "import matplotlib.pyplot as plt \n",
+        "import numpy as np\n",
+        "import os \n",
+        "import PIL \n",
+        "from tensorflow.keras import layers \n",
+        "import time \n",
+        "\n",
+        "from IPython import display "
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "O5rGvy_kbXK3",
+        "colab_type": "text"
+      },
+      "source": [
+        "### Load and prepare the dataset\n",
+        "\n",
+        "We will be using the classic MNIST dataset to train the generator and discriminator. \n",
+        "It is obvious we will be developing handwritten digits resembling the MNIST data "
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "ZwPJpYC5X8Bn",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "(train_images, train_labels), (_, _) = tf.keras.datasets.mnist.load_data()"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "aL7peVgpcELg",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "train_images = train_images.reshape(train_images.shape[0], 28, 28, 1).astype('float32')\n",
+        "train_images = (train_images-127.5)/127.5 #Normalize the images  to [-1, 1]"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "XWl-ZfTtcqGZ",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "BUFFER_SIZE = 60000\n",
+        "BATCH_SIZE = 256"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "I4GM4aSMdFOz",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "# Batch and shuffle the data \n",
+        "train_dataset = tf.data.Dataset.from_tensor_slices(train_images).shuffle(BUFFER_SIZE).batch(BATCH_SIZE)"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "XP3h7upbduYA",
+        "colab_type": "code",
+        "outputId": "6d667200-5908-4b55-8438-e9df3e9ccacf",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 34
+        }
+      },
+      "source": [
+        "train_dataset"
+      ],
+      "execution_count": 8,
+      "outputs": [
+        {
+          "output_type": "execute_result",
+          "data": {
+            "text/plain": [
+              "<BatchDataset shapes: (None, 28, 28, 1), types: tf.float32>"
+            ]
+          },
+          "metadata": {
+            "tags": []
+          },
+          "execution_count": 8
+        }
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "Wy0hi6lyeCT6",
+        "colab_type": "text"
+      },
+      "source": [
+        "### Create the models\n",
+        "\n",
+        "We are using Keras sequential API to design the architecture of the model "
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "CN_1EU8jdxHx",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "# Generator \n",
+        "\n",
+        "def make_generator_model():\n",
+        "    model = tf.keras.Sequential()\n",
+        "    model.add(layers.Dense(7*7*256, use_bias=False, input_shape=(100,)))\n",
+        "    model.add(layers.BatchNormalization())\n",
+        "    model.add(layers.LeakyReLU())\n",
+        "\n",
+        "    model.add(layers.Reshape((7, 7, 256)))\n",
+        "    assert model.output_shape == (None, 7, 7, 256) # Note: None is the batch size\n",
+        "\n",
+        "    model.add(layers.Conv2DTranspose(128, (5, 5), strides=(1, 1), padding='same', use_bias=False))\n",
+        "    assert model.output_shape == (None, 7, 7, 128)\n",
+        "    model.add(layers.BatchNormalization())\n",
+        "    model.add(layers.LeakyReLU())\n",
+        "\n",
+        "    model.add(layers.Conv2DTranspose(64, (5, 5), strides=(2, 2), padding='same', use_bias=False))\n",
+        "    assert model.output_shape == (None, 14, 14, 64)\n",
+        "    model.add(layers.BatchNormalization())\n",
+        "    model.add(layers.LeakyReLU())\n",
+        "\n",
+        "    model.add(layers.Conv2DTranspose(1, (5, 5), strides=(2, 2), padding='same', use_bias=False, activation='tanh'))\n",
+        "    assert model.output_shape == (None, 28, 28, 1)\n",
+        "\n",
+        "    return model"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "EC0E6ht1wVNm",
+        "colab_type": "code",
+        "outputId": "ae0eae9c-20b2-486c-ed83-7b97380cbb7b",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 282
+        }
+      },
+      "source": [
+        "# Testing the output of the untrained Generator \n",
+        "\n",
+        "generator = make_generator_model()\n",
+        "\n",
+        "noise = tf.random.normal([1, 100])\n",
+        "generated_image = generator(noise, training=False)\n",
+        "\n",
+        "plt.imshow(generated_image[0, :, :, 0], cmap='gray')"
+      ],
+      "execution_count": 10,
+      "outputs": [
+        {
+          "output_type": "execute_result",
+          "data": {
+            "text/plain": [
+              "<matplotlib.image.AxesImage at 0x7f1063c57a58>"
+            ]
+          },
+          "metadata": {
+            "tags": []
+          },
+          "execution_count": 10
+        },
+        {
+          "output_type": "display_data",
+          "data": {
+            "image/png": "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\n",
+            "text/plain": [
+              "<Figure size 432x288 with 1 Axes>"
+            ]
+          },
+          "metadata": {
+            "tags": [],
+            "needs_background": "light"
+          }
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "7Nu5eUfFwc-N",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "# Building the Discriminator \n",
+        "def make_discriminator_model():\n",
+        "    model = tf.keras.Sequential()\n",
+        "    model.add(layers.Conv2D(64, (5, 5), strides=(2, 2), padding='same',\n",
+        "                                     input_shape=[28, 28, 1]))\n",
+        "    model.add(layers.LeakyReLU())\n",
+        "    model.add(layers.Dropout(0.3))\n",
+        "\n",
+        "    model.add(layers.Conv2D(128, (5, 5), strides=(2, 2), padding='same'))\n",
+        "    model.add(layers.LeakyReLU())\n",
+        "    model.add(layers.Dropout(0.3))\n",
+        "\n",
+        "    model.add(layers.Flatten())\n",
+        "    model.add(layers.Dense(1))\n",
+        "\n",
+        "    return model"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "9eTNInBwVdB0",
+        "colab_type": "code",
+        "outputId": "1d0b9894-db25-422d-bfc2-b106321cafcf",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 34
+        }
+      },
+      "source": [
+        "discriminator = make_discriminator_model()\n",
+        "decision = discriminator(generated_image)\n",
+        "print (decision)"
+      ],
+      "execution_count": 12,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "text": [
+            "tf.Tensor([[-0.00353497]], shape=(1, 1), dtype=float32)\n"
+          ],
+          "name": "stdout"
+        }
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "4GUhSRcEImsu",
+        "colab_type": "text"
+      },
+      "source": [
+        "### Defining the loss and optimizers "
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "0ChOIz1sWd9y",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "# This method returns a helper function to compute cross entropy loss\n",
+        "cross_entropy = tf.keras.losses.BinaryCrossentropy(from_logits=True)"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "gC4xFaqfIzC0",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        " # Definning the Discriminator loss \n",
+        " def discriminator_loss(real_output, fake_output):\n",
+        "     real_loss = cross_entropy(tf.ones_like(real_output), real_output)\n",
+        "     fake_loss = cross_entropy(tf.zeros_like(fake_output), fake_output)\n",
+        "     total_loss = real_loss + fake_loss\n",
+        "     return total_loss"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "2RyFwS6aQ8M-",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "# Definning the Generator loss \n",
+        "def generator_loss(fake_output):\n",
+        "    return cross_entropy(tf.ones_like(fake_output), fake_output)"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "anj7Gmo9RlAy",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "# definning the optimizers \n",
+        "generator_optimizer = tf.keras.optimizers.Adam(1e-4)\n",
+        "discriminator_optimizer = tf.keras.optimizers.Adam(1e-4)"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "aHEWYHDYZgB8",
+        "colab_type": "text"
+      },
+      "source": [
+        "### Saving the checkpoints "
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "I1QDmvrgZSmm",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "checkpoint_dir = '/content/drive/My Drive/training_checkpoints'\n",
+        "checkpoint_prefix = os.path.join(checkpoint_dir, \"ckpt\")\n",
+        "checkpoint = tf.train.Checkpoint(generator_optimizer=generator_optimizer, discriminator_optimizer=discriminator_optimizer, generator=generator, discriminator=discriminator)"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "pmmIxPYXe4lj",
+        "colab_type": "text"
+      },
+      "source": [
+        "# Definning the training loop\n",
+        "we will be providing a random seed input to the generator, the seed input is used to produce an image. \n",
+        "The discrimnator is then used to classify real images ( from the training set) and fake images (produced by the generator ). THe  loss is calculated for each of these models, and the gradients are used to update the generator and discrimnator "
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "_q5YTMhQcDFE",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "EPOCHS = 50\n",
+        "noise_dim = 100\n",
+        "num_examples_to_generate = 16\n",
+        "\n",
+        "# we will reuse this seed overtime (so its easier)\n",
+        "# to visualize progress in the animated GIF\n",
+        "seed = tf.random.normal([num_examples_to_generate, noise_dim])"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "yP19mBvKguaP",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "# Notice the use of 'tf.function'\n",
+        "# This annotation causes the function to be \"compiled\" as graph code using tensorflow autograph \n",
+        "@tf.function\n",
+        "@tf.function\n",
+        "def train_step(images):\n",
+        "    noise = tf.random.normal([BATCH_SIZE, noise_dim])\n",
+        "\n",
+        "    with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:\n",
+        "      generated_images = generator(noise, training=True)\n",
+        "\n",
+        "      real_output = discriminator(images, training=True)\n",
+        "      fake_output = discriminator(generated_images, training=True)\n",
+        "\n",
+        "      gen_loss = generator_loss(fake_output)\n",
+        "      disc_loss = discriminator_loss(real_output, fake_output)\n",
+        "\n",
+        "    gradients_of_generator = gen_tape.gradient(gen_loss, generator.trainable_variables)\n",
+        "    gradients_of_discriminator = disc_tape.gradient(disc_loss, discriminator.trainable_variables)\n",
+        "\n",
+        "    generator_optimizer.apply_gradients(zip(gradients_of_generator, generator.trainable_variables))\n",
+        "    discriminator_optimizer.apply_gradients(zip(gradients_of_discriminator, discriminator.trainable_variables))\n",
+        "    "
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "R4WAWnSSogrA",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "# Generate images and save them \n",
+        "def generate_and_save_images(model, epoch, test_input):\n",
+        "    # Notice 'training' is set to False\n",
+        "    # So that all layers run in inference mode (batchnorm)\n",
+        "\n",
+        "    predictions = model(test_input, training=False)\n",
+        "\n",
+        "    fig = plt.figure(figsize=(4,4))\n",
+        "\n",
+        "    for i in range(predictions.shape[0]):\n",
+        "        plt.sublplot"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "4r0MvXcSnVth",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "def train(dataset, epochs):\n",
+        "    for epoch in range(epochs):\n",
+        "        start = time.time()\n",
+        "\n",
+        "        for image_batch in dataset:\n",
+        "            train_step(image_batch)\n",
+        "        \n",
+        "        # Produce images for the GIF as we go \n",
+        "        display.clear_output(wait=True)\n",
+        "        generate_and_save_images(g)"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    }
+  ]
+}
